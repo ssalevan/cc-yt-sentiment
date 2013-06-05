@@ -127,9 +127,9 @@ class YouTubeSentimentAnalysis(MRJob):
       visible_text = unicode(''.join(comment.findAll(text = True)))
       word_features = BagOfWords(tokenize.word_tokenize(visible_text))
       prob_dist = self.classifier.prob_classify(word_features)
-      # Finds the difference between negative and positive probabilities.
-      probabilities = [prob_dist.prob('neg'), prob_dist.prob('pos')]
-      sentiment_score = max(probabilities) - min(probabilities)
+      # Derives a sortable sentiment score by finding the difference between
+      # the negative and positive probabilities.
+      sentiment_score = abs(prob_dist.prob('neg') - prob_dist.prob('pos'))
       # Negates the 'sentiment score' if the comment has a negative sentiment.
       if 'neg' in prob_dist.generate():
         sentiment_score *= -1
