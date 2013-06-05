@@ -117,7 +117,7 @@ class YouTubeSentimentAnalysis(MRJob):
     page_arcfile = GetArcFile(self.s3, CC_BUCKET, cur_page_info)
     # Parses the page contents via BeautifulSoup.
     doc_soup = BeautifulSoup(page_arcfile)
-    self.increment_counter('YouTube', 'num_videos', 1)
+    self.increment_counter("YouTube", "num_videos", 1)
     # Locates all the comments on a page by finding all tags that match:
     # <div class='comment-text'>
     sentiment_scores = []
@@ -129,23 +129,23 @@ class YouTubeSentimentAnalysis(MRJob):
       prob_dist = self.classifier.prob_classify(word_features)
       # Derives a sortable sentiment score by finding the difference between
       # the negative and positive probabilities.
-      sentiment_score = abs(prob_dist.prob('neg') - prob_dist.prob('pos'))
+      sentiment_score = abs(prob_dist.prob("neg") - prob_dist.prob("pos"))
       # Negates the 'sentiment score' if the comment has a negative sentiment.
-      if 'neg' in prob_dist.generate():
+      if "neg" in prob_dist.generate():
         sentiment_score *= -1
       sentiment_scores.append(sentiment_score)
-      self.increment_counter('YouTube', 'num_comments', 1)
+      self.increment_counter("YouTube", "num_comments", 1)
     # If at least one sentiment score exists, derives the average sentiment
     # score; otherwise returns a bogon value of 2.0.
     avg_sentiment_score = 2.0
     if len(sentiment_scores) > 0:
       avg_sentiment_score = reduce(operator.add, sentiment_scores) / \
           float(len(sentiment_scores))
-    yield avg_sentiment_score, cur_page_info['url']
+    yield avg_sentiment_score, cur_page_info["url"]
 
   def reducer(self, score, urls):
     yield score, ",".join(urls)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   YouTubeSentimentAnalysis.run()
