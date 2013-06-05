@@ -1,5 +1,9 @@
 #!/usr/bin/python
-# Analyzes sentiment from YouTube comments by 
+# Analyzes sentiment from YouTube comments using an NLTK-based sentiment
+# classifier.  Output will consist of a sorted file in the following
+# format:
+#
+# <sentiment score between -1 and 1>  "<comma-separated YouTube URLs>"
 #
 # Copyright 2013 Steve Salevan (steve.salevan@gmail.com)
 # 
@@ -31,6 +35,7 @@ import BeautifulSoup
 import boto
 import mrjob
 import nltk
+import yaml
 
 
 import nltk.tokenize as tokenize
@@ -85,14 +90,15 @@ def GetArcFile(s3, bucket, info):
   return GzipFile(fileobj=chunk)
 
 
-def ExtractFeaturesWithBaseMap(base_feature_map, text):
-  # Makes a shallow copy of the base feature map.
-  new_features = base_feature_map.copy()
-  bare_words = PUNCTUATION_REGEX.sub("", text).lower().split()
-  for word in bare_words:
-    if word in new_features:
-      new_features[word] = True
-  return new_features
+def ReadYamlFile(file_loc):
+  yaml_file = open(file_loc, "r")
+  data_map = yaml.safe_load(yaml_file)
+  yaml_file.close()
+  return data_map
+
+
+def BagOfWords(words):
+  return dict([word,True] for word in words)
 
 
 class YouTubeSentimentAnalysis(MRJob):
@@ -100,12 +106,11 @@ class YouTubeSentimentAnalysis(MRJob):
   def mapper_init(self):
     # Unpickles the trained NLTK sentiment classifier object.
     self.classifier = UnpickleObject("classifier.pkl")
-    # Unpickles the word feature map derived from the classifiable words.
-    self.feature_map = UnpickleObject("feature_map.pkl")
+    mrjob_conf = ReadYamlFile(".mrjob.conf")
     # Instantiates a connection to Amazon S3 with the credentials configured
     # for the current MapReduce job.
-    self.s3 = S3Connection('<AWS access key>',
-        '<AWS secret key>')
+    self.s3 = S3Connection(mrjob_conf["runners"]["emr"]["aws_access_key_id"],
+        mrjob_conf["runners"]["emr"]["aws_secret_access_key"])
 
   def mapper(self, _, line):
     # Parses JSON record mapping crawled page to location in CC S3 bucket.
@@ -121,9 +126,9 @@ class YouTubeSentimentAnalysis(MRJob):
     for comment in doc_soup.findAll("div", {"class": "comment-text"}):
       # Classifies the positive and negative sentiment probabilities from the
       # textual content of the current YouTube comment.
-      prob_dist = self.classifier.prob_classify(
-          ExtractFeaturesWithBaseMap(self.feature_map,
-              unicode(''.join(comment.findAll(text=True)))))
+      visible_text = unicode(''.join(comment.findAll(text = True)))
+      word_features = BagOfWords(tokenize.word_tokenize(visible_text))
+      prob_dist = self.classifier.prob_classify(word_features)
       # Finds the difference between negative and positive probabilities.
       probabilities = [prob_dist.prob('neg'), prob_dist.prob('pos')]
       sentiment_score = max(probabilities) - min(probabilities)
