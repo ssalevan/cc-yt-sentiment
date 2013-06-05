@@ -25,8 +25,6 @@ import gzip
 import json
 import operator
 import os
-import re
-import string
 import pickle
 import StringIO
 
@@ -47,16 +45,6 @@ from StringIO import StringIO
 
 
 CC_BUCKET = "aws-publicdatasets"
-PUNCTUATION_REGEX = re.compile("[%s]" % re.escape(string.punctuation))
-
-
-def GetBareWordList(text):
-  """
-  Strips punctuation and returns a list of all whitespace-delimited words from
-  an arbitrary string.
-  """
-
-  return PUNCTUATION_REGEX.sub("", text).lower().split()
 
 
 def UnpickleObject(file_loc):
@@ -74,23 +62,28 @@ def UnpickleObject(file_loc):
 def GetArcFile(s3, bucket, info):
   """
   Retrieves the GzipFile corresponding to a page in the Common Crawl dataset
-  as described by the supplied info dictionary
+  as described by the supplied info dictionary.
   """
 
   bucket = s3.lookup(bucket)
   keyname = "/common-crawl/parse-output/segment/{arcSourceSegmentId}/" \
             "{arcFileDate}_{arcFileParition}.arc.gz".format(**info)
   key = bucket.lookup(keyname)
-  start = info['arcFileOffset']
-  end = start + info['compressedSize'] - 1
-  headers = {'Range' : 'bytes=%s-%s' % (start, end)}
+  start = info["arcFileOffset"]
+  end = start + info["compressedSize"] - 1
+  headers = {"Range" : "bytes=%s-%s" % (start, end)}
   chunk = StringIO(
-    key.get_contents_as_string(headers=headers)
+    key.get_contents_as_string(headers = headers)
   )
-  return GzipFile(fileobj=chunk)
+  return GzipFile(fileobj = chunk)
 
 
 def ReadYamlFile(file_loc):
+  """
+  Deserializes YAML data contained within the file located at the supplied
+  file location.
+  """
+
   yaml_file = open(file_loc, "r")
   data_map = yaml.safe_load(yaml_file)
   yaml_file.close()
@@ -98,7 +91,12 @@ def ReadYamlFile(file_loc):
 
 
 def BagOfWords(words):
-  return dict([word,True] for word in words)
+  """
+  Returns a 'bag of words' dictionary, mapping words to True values, which will
+  be used by NLTK to classify the sentiment of the provided words.
+  """
+
+  return dict([word, True] for word in words)
 
 
 class YouTubeSentimentAnalysis(MRJob):
@@ -137,7 +135,8 @@ class YouTubeSentimentAnalysis(MRJob):
         sentiment_score *= -1
       sentiment_scores.append(sentiment_score)
       self.increment_counter('YouTube', 'num_comments', 1)
-    # Derives the arithmetic mean of all comment sentiment scores.
+    # If at least one sentiment score exists, derives the average sentiment
+    # score; otherwise returns a bogon value of 2.0.
     avg_sentiment_score = 2.0
     if len(sentiment_scores) > 0:
       avg_sentiment_score = reduce(operator.add, sentiment_scores) / \
