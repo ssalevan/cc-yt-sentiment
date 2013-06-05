@@ -73,7 +73,7 @@ def GetArcFile(s3, bucket, info):
   end = start + info["compressedSize"] - 1
   headers = {"Range" : "bytes=%s-%s" % (start, end)}
   chunk = StringIO(
-    key.get_contents_as_string(headers = headers)
+      key.get_contents_as_string(headers = headers)
   )
   return GzipFile(fileobj = chunk)
 
@@ -97,7 +97,6 @@ def BagOfWords(words):
   """
 
   return dict([word, True] for word in words)
-
 
 class YouTubeSentimentAnalysis(MRJob):
 
@@ -127,12 +126,9 @@ class YouTubeSentimentAnalysis(MRJob):
       visible_text = unicode(''.join(comment.findAll(text = True)))
       word_features = BagOfWords(tokenize.word_tokenize(visible_text))
       prob_dist = self.classifier.prob_classify(word_features)
-      # Derives a sortable sentiment score by finding the difference between
+      # Derives a sentiment score by finding the difference between
       # the negative and positive probabilities.
-      sentiment_score = abs(prob_dist.prob("neg") - prob_dist.prob("pos"))
-      # Negates the 'sentiment score' if the comment has a negative sentiment.
-      if "neg" in prob_dist.generate():
-        sentiment_score *= -1
+      sentiment_score = prob_dist.prob("pos") - prob_dist.prob("neg")
       sentiment_scores.append(sentiment_score)
       self.increment_counter("YouTube", "num_comments", 1)
     # If at least one sentiment score exists, derives the average sentiment
@@ -141,10 +137,20 @@ class YouTubeSentimentAnalysis(MRJob):
     if len(sentiment_scores) > 0:
       avg_sentiment_score = reduce(operator.add, sentiment_scores) / \
           float(len(sentiment_scores))
-    yield avg_sentiment_score, cur_page_info["url"]
+    yield avg_sentiment_score, cur_page_info['url']
 
   def reducer(self, score, urls):
     yield score, ",".join(urls)
+
+  def steps(self):
+    # Enforce secondary sort by passing all output through a single-task
+    # identity reducer step.
+    SINGLE_REDUCER_JOBCONF = { 'mapred.reduce.tasks' : 1 }
+    return [ self.mr(mapper_init = self.mapper_init,
+                     mapper = self.mapper,
+                     reducer = self.reducer),
+             self.mr(reducer = self.reducer,
+                     jobconf = SINGLE_REDUCER_JOBCONF) ]
 
 
 if __name__ == "__main__":
