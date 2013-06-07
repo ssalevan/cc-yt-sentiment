@@ -143,7 +143,7 @@ class YouTubeSentimentAnalysis(MRJob):
     if len(sentiment_scores) > 0:
       avg_sentiment_score = reduce(operator.add, sentiment_scores) / \
           float(len(sentiment_scores))
-    self.increment_counter("YouTube", "Number of processed videos", 1)
+      self.increment_counter("YouTube", "Number of processed videos", 1)
     yield avg_sentiment_score, cur_page_info['url']
 
   def reducer(self, score, urls):
