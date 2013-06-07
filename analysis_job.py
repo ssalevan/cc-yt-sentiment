@@ -27,6 +27,7 @@ import operator
 import os
 import pickle
 import StringIO
+import traceback
 
 
 import BeautifulSoup
@@ -98,6 +99,7 @@ def BagOfWords(words):
 
   return dict([word, True] for word in words)
 
+
 class YouTubeSentimentAnalysis(MRJob):
 
   def mapper_init(self):
@@ -113,10 +115,14 @@ class YouTubeSentimentAnalysis(MRJob):
     # Parses JSON record mapping crawled page to location in CC S3 bucket.
     cur_page_info = json.loads(line)
     # Retrieves the GzipFile corresponding to the crawled page from S3.
-    page_arcfile = GetArcFile(self.s3, CC_BUCKET, cur_page_info)
+    page_arcfile = ""
+    try:
+      page_arcfile = GetArcFile(self.s3, CC_BUCKET, cur_page_info)
+    except Exception, e:
+      self.set_status("Exception encountered while reading file %s: %s" % \
+          (line, traceback.format_exc()))
     # Parses the page contents via BeautifulSoup.
     doc_soup = BeautifulSoup(page_arcfile)
-    self.increment_counter("YouTube", "num_videos", 1)
     # Locates all the comments on a page by finding all tags that match:
     # <div class='comment-text'>
     sentiment_scores = []
@@ -130,13 +136,14 @@ class YouTubeSentimentAnalysis(MRJob):
       # the negative and positive probabilities.
       sentiment_score = prob_dist.prob("pos") - prob_dist.prob("neg")
       sentiment_scores.append(sentiment_score)
-      self.increment_counter("YouTube", "num_comments", 1)
+      self.increment_counter("YouTube", "Number of processed comments", 1)
     # If at least one sentiment score exists, derives the average sentiment
     # score; otherwise returns a bogon value of 2.0.
     avg_sentiment_score = 2.0
     if len(sentiment_scores) > 0:
       avg_sentiment_score = reduce(operator.add, sentiment_scores) / \
           float(len(sentiment_scores))
+    self.increment_counter("YouTube", "Number of processed videos", 1)
     yield avg_sentiment_score, cur_page_info['url']
 
   def reducer(self, score, urls):
